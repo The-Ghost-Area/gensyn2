@@ -59,8 +59,6 @@ internal_loader() {
     sleep 1
 }
 
-
-
 # === Error handling function ===
 handle_error() {
     print_banner
@@ -77,7 +75,6 @@ print_main_progress 0
 sleep 2
 
 # === CHANGE TO WORKING DIRECTORY (~/work) ===
-# YEH PART AAPKE KEHNE PAR ADD KIYA GAYA HAI
 printf "Changing to target directory ~/work...\n"
 mkdir -p ~/work
 cd ~/work
@@ -85,86 +82,83 @@ printf "Successfully changed to: $(pwd)\n"
 sleep 2
 
 
-# === Step 1: System Update & Dependencies ===
+# === Step 1-4 (Same as before) ===
+# ... (System Update, CUDA, Node.js, Version Check) ...
 print_banner
 print_main_progress 1
 printf "[1/6] Updating system and installing base packages..."
-(sudo apt update -qq && sudo apt install -y -qq \
-  sudo python3 python3-venv python3-pip \
-  curl wget screen git lsof nano unzip iproute2 \
-  build-essential gcc g++ > /dev/null 2>&1) & internal_loader $! "[1/6] Updating system and installing base packages..." 1
+(sudo apt update -qq && sudo apt install -y -qq sudo python3 python3-venv python3-pip curl wget screen git lsof nano unzip iproute2 build-essential gcc g++ > /dev/null 2>&1) & internal_loader $! "[1/6] Updating system and installing base packages..." 1
 [ $? -eq 0 ] || handle_error "Failed to update system or install packages" 1 "[1/6] Updating system and installing base packages..."
 sleep 1
 
-# === Step 2: CUDA Setup ===
 print_banner
 print_main_progress 2
 printf "[2/6] Downloading and running CUDA setup..."
-([ -f cuda.sh ] && rm cuda.sh; \
-curl -s -o cuda.sh https://raw.githubusercontent.com/zunxbt/gensyn-testnet/main/cuda.sh && \
-chmod +x cuda.sh && \
-bash ./cuda.sh > /dev/null 2>&1) & internal_loader $! "[2/6] Downloading and running CUDA setup..." 2
+([ -f cuda.sh ] && rm cuda.sh; curl -s -o cuda.sh https://raw.githubusercontent.com/zunxbt/gensyn-testnet/main/cuda.sh && chmod +x cuda.sh && bash ./cuda.sh > /dev/null 2>&1) & internal_loader $! "[2/6] Downloading and running CUDA setup..." 2
 [ $? -eq 0 ] || handle_error "Failed to download or run CUDA setup" 2 "[2/6] Downloading and running CUDA setup..."
 sleep 1
 
-# === Step 3: Node.js and Yarn ===
 print_banner
 print_main_progress 3
 printf "[3/6] Setting up Node.js and Yarn..."
-(curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1 && \
-sudo apt update -qq && sudo apt install -y -qq nodejs > /dev/null 2>&1 && \
-curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add - > /dev/null 2>&1 && \
-echo "deb https://dl.yarnpkg.com/debian stable main" | sudo tee /etc/apt/sources.list.d/yarn.list > /dev/null && \
-sudo apt update -qq && sudo apt install -y -qq yarn > /dev/null 2>&1) & internal_loader $! "[3/6] Setting up Node.js and Yarn..." 3
+(curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1 && sudo apt update -qq && sudo apt install -y -qq nodejs > /dev/null 2>&1 && curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add - > /dev/null 2>&1 && echo "deb https://dl.yarnpkg.com/debian stable main" | sudo tee /etc/apt/sources.list.d/yarn.list > /dev/null && sudo apt update -qq && sudo apt install -y -qq yarn > /dev/null 2>&1) & internal_loader $! "[3/6] Setting up Node.js and Yarn..." 3
 [ $? -eq 0 ] || handle_error "Failed to install Node.js or Yarn" 3 "[3/6] Setting up Node.js and Yarn..."
 sleep 1
 
-# === Step 4: Version Check ===
 print_banner
 print_main_progress 4
 printf "[4/6] Verifying installed versions..."
 (node -v > /dev/null 2>&1 && npm -v > /dev/null 2>&1 && yarn -v > /dev/null 2>&1 && python3 --version > /dev/null 2>&1) & internal_loader $! "[4/6] Verifying installed versions..." 4
 [ $? -eq 0 ] || handle_error "Failed to verify versions" 4 "[4/6] Verifying installed versions..."
 echo "Versions:"
-printf "┌──────────┬──────────┐\n"
-printf "│ Node.js  │ $(node -v 2>/dev/null || echo "Not installed") │\n"
-printf "│ npm      │ $(npm -v 2>/dev/null || echo "Not installed") │\n"
-printf "│ Yarn     │ $(yarn -v 2>/dev/null || echo "Not installed") │\n"
-printf "│ Python   │ $(python3 --version 2>/dev/null | cut -d' ' -f2 || echo "Not installed") │\n"
-printf "└──────────┴──────────┘\n"
+printf "┌──────────┬──────────┐\n"; printf "│ Node.js  │ $(node -v 2>/dev/null || echo "Not installed") │\n"; printf "│ npm      │ $(npm -v 2>/dev/null || echo "Not installed") │\n"; printf "│ Yarn     │ $(yarn -v 2>/dev/null || echo "Not installed") │\n"; printf "│ Python   │ $(python3 --version 2>/dev/null | cut -d' ' -f2 || echo "Not installed") │\n"; printf "└──────────┴──────────┘\n";
 sleep 2
 
 # === Step 5: Clone Gensyn Project ===
 print_banner
 print_main_progress 5
 printf "[5/6] Cloning Gensyn AI repository..."
-(
-  # Agar rl-swarm folder pehle se hai to usse skip kar dega
-  if [ ! -d "rl-swarm" ]; then
-    git clone --quiet https://github.com/gensyn-ai/rl-swarm.git > /dev/null 2>&1
-  else
-    echo "Directory rl-swarm already exists, skipping clone."
-    sleep 1
-  fi
-) & internal_loader $! "[5/6] Cloning Gensyn AI repository..." 5
+( if [ ! -d "rl-swarm" ]; then git clone --quiet https://github.com/gensyn-ai/rl-swarm.git > /dev/null 2>&1; else echo "Directory rl-swarm already exists, skipping clone."; sleep 1; fi ) & internal_loader $! "[5/6] Cloning Gensyn AI repository..." 5
 [ $? -eq 0 ] || handle_error "❌ Failed to clone repository" 5 "[5/6] Cloning Gensyn AI repository..."
 sleep 1
 
 
-# === Step 6: Python Virtual Environment & Frontend Setup ===
+# === Step 6: Python Virtual Environment & Frontend Setup (VERBOSE / UPDATED) ===
 print_banner
 print_main_progress 6
-printf "[6/6] Setting up Python environment and frontend..."
-# Sahi logic: Pehle 'rl-swarm' folder ke andar jaao, phir setup karo
-(cd rl-swarm 2>/dev/null || { echo "Directory rl-swarm not found!"; exit 1; } && \
-python3 -m venv .venv > /dev/null 2>&1 && \
-source .venv/bin/activate && \
-cd modal-login 2>/dev/null || { echo "Directory modal-login not found. Check repo clone."; exit 1; } && \
-yarn install --silent > /dev/null 2>&1 && \
-yarn upgrade --silent > /dev/null 2>&1 && \
-yarn add next@latest viem@latest --silent > /dev/null 2>&1) & internal_loader $! "[6/6] Setting up Python environment and frontend..." 6
-[ $? -eq 0 ] || handle_error "Failed to set up Python environment or frontend." 6 "[6/6] Setting up Python environment and frontend..."
-sleep 1
+echo "[6/6] Setting up Python environment and frontend..."
+
+# Yeh function ab live output dikhayega
+setup_frontend_verbose() {
+    # Pehle rl-swarm directory ke andar jaao
+    cd rl-swarm 2>/dev/null || { echo "❌ Error: Directory 'rl-swarm' not found!"; exit 1; }
+
+    echo "➡️  Creating Python virtual environment..."
+    python3 -m venv .venv
+    echo "✅ Python environment created."
+    
+    # Ab modal-login directory mein jaao
+    cd modal-login 2>/dev/null || { echo "❌ Error: Directory 'modal-login' not found!"; exit 1; }
+    
+    echo "➡️  ${BOLD}Running 'yarn install'... This may take several minutes depending on your internet speed.${NC}"
+    echo "You will see live download progress below."
+    yarn install # <-- SILENT FLAG HATA DIYA GAYA
+    
+    echo "➡️  ${BOLD}Running 'yarn upgrade'...${NC}"
+    yarn upgrade # <-- SILENT FLAG HATA DIYA GAYA
+    
+    echo "➡️  ${BOLD}Running 'yarn add next@latest viem@latest'...${NC}"
+    yarn add next@latest viem@latest # <-- SILENT FLAG HATA DIYA GAYA
+    
+    echo "✅ Frontend setup complete."
+    # Wapas main directory mein aa jaao
+    cd ../..
+}
+
+# Upar banaye gaye function ko yahan chalao
+setup_frontend_verbose || handle_error "Failed to set up Python environment or frontend." 6 "[6/6] Setting up environment..."
+sleep 2
+
 
 # === Final Output ===
 print_banner
