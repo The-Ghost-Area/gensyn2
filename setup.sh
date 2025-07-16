@@ -1,18 +1,32 @@
 #!/bin/bash
-set -e
+#
+# GENSYN AUTO SETUP SCRIPT
+# Improved version with enhanced error logging and modern practices.
+#
+set -e # Exit immediately if a command exits with a non-zero status.
 
-# === Color and formatting definitions ===
-GREEN=$(tput setaf 2)
-NC=$(tput sgr0)
-BOLD=$(tput bold)
+# === Configuration ===
+TOTAL_STEPS=6
+LOG_FILE="/tmp/gensyn_setup.log"
+WORK_DIR=~/work
 
-# === Random color for banner ===
+# Clean up previous log file
+>"${LOG_FILE}"
+
+# === Color and Formatting Definitions ===
+# Fallback to empty strings if tput is not available or fails
+GREEN=$(tput setaf 2 2>/dev/null) || GREEN=""
+NC=$(tput sgr0 2>/dev/null) || NC=""
+BOLD=$(tput bold 2>/dev/null) || BOLD=""
+RED=$(tput setaf 1 2>/dev/null) || RED=""
+
+# === UI Functions ===
 get_random_color() {
-    colors=(1 2 3 4 5 6 9 10 11 12 13 14 21 27 33 39 45 51 81 87 123 129 165 201)
-    echo $(tput setaf ${colors[$RANDOM % ${#colors[@]}]})
+    # A smaller, more readable set of colors
+    colors=(33 39 45 51 81 87 123 129 165 201 27)
+    echo "$(tput setaf ${colors[$RANDOM % ${#colors[@]}]})"
 }
 
-# === Print banner (persistent, full banner) ===
 print_banner() {
     clear
     echo "$(get_random_color)"
@@ -23,147 +37,168 @@ print_banner() {
     echo "██████╔╝███████╗ ╚████╔╝ ██║███████╗"
     echo "╚═════╝ ╚══════╝  ╚═══╝  ╚═╝╚══════╝"
     echo "${NC}"
-    echo "${BOLD}🔥 GENSYN AUTO SETUP SCRIPT BY DEVIL 🔥${NC}"
+    echo "${BOLD}🔥 GENSYN AUTO SETUP SCRIPT 🔥${NC}"
+    echo
 }
 
-# === Main progress bar ===
 print_main_progress() {
     local step=$1
-    local total_steps=6
-    local progress=$(( (step * 100) / total_steps ))
-    local filled=$(( progress / 5 ))
-    local empty=$(( 20 - filled ))
-    local bar=$(printf "%${filled}s" | tr ' ' '#')$(printf "%${empty}s" | tr ' ' '-')
-    echo "Overall Progress: [$bar] $progress%"
+    local progress=$(( (step * 100) / TOTAL_STEPS ))
+    local filled_len=$(( (progress * 20) / 100 ))
+    local empty_len=$(( 20 - filled_len ))
+    local bar=$(printf "%${filled_len}s" | tr ' ' '█')$(printf "%${empty_len}s" | tr ' ' '─')
+    echo "Overall Progress: [${GREEN}${bar}${NC}] ${progress}%"
 }
 
-# === Internal step progress moon loader ===
-internal_loader() {
-    local pid=$1
-    local message=$2
-    local step=$3
-    local earth_spin=("🌍" "🌎" "🌏")
-    local i=0
-    while [ -d /proc/$pid ]; do
-        print_banner
-        print_main_progress $step
-        printf "\r%s %s" "$message" "${earth_spin[$i]}"
-        i=$(( (i + 1) % ${#earth_spin[@]} ))
-        sleep 0.2
-        tput cuu1
-        tput el
-    done
-    print_banner
-    print_main_progress $step
-    printf "\r%s %s ${GREEN}Done${NC}\n" "$message" "🌍"
-    sleep 1
-}
+# === Core Logic Functions ===
 
-# === Error handling function ===
 handle_error() {
+    local message="$1"
+    local step="$2"
+
     print_banner
-    print_main_progress $2
-    printf "\r%s [✖] Failed\n" "$3"
-    echo "Error: $1"
-    echo "Exiting setup. Please fix the issue and retry."
+    print_main_progress "${step}"
+    printf "\n${RED}✖ An error occurred during: %s${NC}\n" "${message}"
+    echo "--------------------------------------------------"
+    echo "  ${BOLD}Error Details (from ${LOG_FILE}):${NC}"
+    echo "--------------------------------------------------"
+    # Indent the log output for readability
+    sed 's/^/    /' "${LOG_FILE}"
+    echo "--------------------------------------------------"
+    echo "${RED}Exiting setup. Please review the error above, fix the issue, and retry.${NC}"
     exit 1
 }
 
-# === Initial banner ===
-print_banner
-print_main_progress 0
-sleep 2
-
-# === CHANGE TO WORKING DIRECTORY (~/work) ===
-printf "Changing to target directory ~/work...\n"
-mkdir -p ~/work
-cd ~/work
-printf "Successfully changed to: $(pwd)\n"
-sleep 2
-
-
-# === Step 1-4 (Same as before) ===
-# ... (System Update, CUDA, Node.js, Version Check) ...
-print_banner
-print_main_progress 1
-printf "[1/6] Updating system and installing base packages..."
-(sudo apt update -qq && sudo apt install -y -qq sudo python3 python3-venv python3-pip curl wget screen git lsof nano unzip iproute2 build-essential gcc g++ > /dev/null 2>&1) & internal_loader $! "[1/6] Updating system and installing base packages..." 1
-[ $? -eq 0 ] || handle_error "Failed to update system or install packages" 1 "[1/6] Updating system and installing base packages..."
-sleep 1
-
-print_banner
-print_main_progress 2
-printf "[2/6] Downloading and running CUDA setup..."
-([ -f cuda.sh ] && rm cuda.sh; curl -s -o cuda.sh https://raw.githubusercontent.com/zunxbt/gensyn-testnet/main/cuda.sh && chmod +x cuda.sh && bash ./cuda.sh > /dev/null 2>&1) & internal_loader $! "[2/6] Downloading and running CUDA setup..." 2
-[ $? -eq 0 ] || handle_error "Failed to download or run CUDA setup" 2 "[2/6] Downloading and running CUDA setup..."
-sleep 1
-
-print_banner
-print_main_progress 3
-printf "[3/6] Setting up Node.js and Yarn..."
-(curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1 && sudo apt update -qq && sudo apt install -y -qq nodejs > /dev/null 2>&1 && curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add - > /dev/null 2>&1 && echo "deb https://dl.yarnpkg.com/debian stable main" | sudo tee /etc/apt/sources.list.d/yarn.list > /dev/null && sudo apt update -qq && sudo apt install -y -qq yarn > /dev/null 2>&1) & internal_loader $! "[3/6] Setting up Node.js and Yarn..." 3
-[ $? -eq 0 ] || handle_error "Failed to install Node.js or Yarn" 3 "[3/6] Setting up Node.js and Yarn..."
-sleep 1
-
-print_banner
-print_main_progress 4
-printf "[4/6] Verifying installed versions..."
-(node -v > /dev/null 2>&1 && npm -v > /dev/null 2>&1 && yarn -v > /dev/null 2>&1 && python3 --version > /dev/null 2>&1) & internal_loader $! "[4/6] Verifying installed versions..." 4
-[ $? -eq 0 ] || handle_error "Failed to verify versions" 4 "[4/6] Verifying installed versions..."
-echo "Versions:"
-printf "┌──────────┬──────────┐\n"; printf "│ Node.js  │ $(node -v 2>/dev/null || echo "Not installed") │\n"; printf "│ npm      │ $(npm -v 2>/dev/null || echo "Not installed") │\n"; printf "│ Yarn     │ $(yarn -v 2>/dev/null || echo "Not installed") │\n"; printf "│ Python   │ $(python3 --version 2>/dev/null | cut -d' ' -f2 || echo "Not installed") │\n"; printf "└──────────┴──────────┘\n";
-sleep 2
-
-# === Step 5: Clone Gensyn Project ===
-print_banner
-print_main_progress 5
-printf "[5/6] Cloning Gensyn AI repository..."
-( if [ ! -d "rl-swarm" ]; then git clone --quiet https://github.com/gensyn-ai/rl-swarm.git > /dev/null 2>&1; else echo "Directory rl-swarm already exists, skipping clone."; sleep 1; fi ) & internal_loader $! "[5/6] Cloning Gensyn AI repository..." 5
-[ $? -eq 0 ] || handle_error "❌ Failed to clone repository" 5 "[5/6] Cloning Gensyn AI repository..."
-sleep 1
-
-
-# === Step 6: Python Virtual Environment & Frontend Setup (VERBOSE / UPDATED) ===
-print_banner
-print_main_progress 6
-echo "[6/6] Setting up Python environment and frontend..."
-
-# Yeh function ab live output dikhayega
-setup_frontend_verbose() {
-    # Pehle rl-swarm directory ke andar jaao
-    cd rl-swarm 2>/dev/null || { echo "❌ Error: Directory 'rl-swarm' not found!"; exit 1; }
-
-    echo "➡️  Creating Python virtual environment..."
-    python3 -m venv .venv
-    echo "✅ Python environment created."
+# Universal runner with loader and detailed logging
+run_with_loader() {
+    local message="$1"
+    local step="$2"
+    local command_to_run="$3"
     
-    # Ab modal-login directory mein jaao
-    cd modal-login 2>/dev/null || { echo "❌ Error: Directory 'modal-login' not found!"; exit 1; }
+    # Run command in the background, redirecting stdout/stderr to the log file
+    eval "${command_to_run}" >> "${LOG_FILE}" 2>&1 &
+    local pid=$!
+
+    local spinner=("🌍" "🌎" "🌏")
+    local i=0
     
-    echo "➡️  ${BOLD}Running 'yarn install'... This may take several minutes depending on your internet speed.${NC}"
-    echo "You will see live download progress below."
-    yarn install # <-- SILENT FLAG HATA DIYA GAYA
+    # Hide cursor
+    tput civis
+    while [ -d /proc/$pid ]; do
+        print_banner
+        print_main_progress "${step}"
+        printf "\r%s... %s" "${message}" "${spinner[$i]}"
+        i=$(( (i + 1) % ${#spinner[@]} ))
+        sleep 0.2
+    done
+    # Show cursor
+    tput cnorm
     
-    echo "➡️  ${BOLD}Running 'yarn upgrade'...${NC}"
-    yarn upgrade # <-- SILENT FLAG HATA DIYA GAYA
+    # Wait for the process one last time to get the exit code
+    wait $pid
+    local exit_code=$?
     
-    echo "➡️  ${BOLD}Running 'yarn add next@latest viem@latest'...${NC}"
-    yarn add next@latest viem@latest # <-- SILENT FLAG HATA DIYA GAYA
-    
-    echo "✅ Frontend setup complete."
-    # Wapas main directory mein aa jaao
-    cd ../..
+    print_banner
+    print_main_progress "${step}"
+    if [ $exit_code -eq 0 ]; then
+        printf "\r${GREEN}✔ %s... Done${NC}\n" "${message}"
+        sleep 1
+    else
+        handle_error "${message}" "${step}"
+    fi
 }
 
-# Upar banaye gaye function ko yahan chalao
-setup_frontend_verbose || handle_error "Failed to set up Python environment or frontend." 6 "[6/6] Setting up environment..."
-sleep 2
+# === Main Script Execution ===
+main() {
+    print_banner
+    print_main_progress 0
+    echo "Starting Gensyn setup. All detailed logs will be in ${LOG_FILE}"
+    sleep 2
 
+    echo "Changing to target directory ${WORK_DIR}..."
+    mkdir -p "${WORK_DIR}"
+    cd "${WORK_DIR}"
+    echo "Successfully changed to: $(pwd)"
+    sleep 1
 
-# === Final Output ===
-print_banner
-print_main_progress 6
-echo
-echo "${BOLD}✅ GENSYN SETUP COMPLETE${NC}"
-echo "All files are located in: ${BOLD}$(pwd)/rl-swarm${NC}"
-echo "${BOLD}🛡️ DEVIL KO THANKS BOLO${NC}"
+    # --- Step 1: System Update ---
+    run_with_loader "[1/${TOTAL_STEPS}] Updating system and installing base packages" 1 \
+        "sudo apt-get update -qq && sudo apt-get install -y -qq sudo python3 python3-venv python3-pip curl wget screen git lsof nano unzip iproute2 build-essential gcc g++"
+
+    # --- Step 2: CUDA Setup ---
+    run_with_loader "[2/${TOTAL_STEPS}] Downloading and running CUDA setup" 2 \
+        "rm -f cuda.sh && curl -s -o cuda.sh https://raw.githubusercontent.com/zunxbt/gensyn-testnet/main/cuda.sh && chmod +x cuda.sh && bash ./cuda.sh"
+
+    # --- Step 3: Node.js and Yarn Setup (Modern Method) ---
+    run_with_loader "[3/${TOTAL_STEPS}] Setting up Node.js and Yarn" 3 \
+        "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && \
+        sudo apt-get update -qq && sudo apt-get install -y -qq nodejs && \
+        sudo mkdir -p /etc/apt/keyrings && \
+        curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/yarn.gpg && \
+        echo 'deb [signed-by=/etc/apt/keyrings/yarn.gpg] https://dl.yarnpkg.com/debian stable main' | sudo tee /etc/apt/sources.list.d/yarn.list && \
+        sudo apt-get update -qq && sudo apt-get install -y -qq yarn"
+
+    # --- Step 4: Version Verification ---
+    run_with_loader "[4/${TOTAL_STEPS}] Verifying installed versions" 4 \
+        "node -v && npm -v && yarn -v && python3 --version"
+    
+    echo "${BOLD}Installed Versions:${NC}"
+    printf "┌──────────┬──────────┐\n"; printf "│ Node.js  │ $(node -v 2>/dev/null || echo "N/A") │\n"; printf "│ npm      │ $(npm -v 2>/dev/null || echo "N/A") │\n"; printf "│ Yarn     │ $(yarn -v 2>/dev/null || echo "N/A") │\n"; printf "│ Python   │ $(python3 --version 2>/dev/null | cut -d' ' -f2 || echo "N/A") │\n"; printf "└──────────┴──────────┘\n";
+    sleep 2
+
+    # --- Step 5: Clone Gensyn Project ---
+    if [ -d "rl-swarm" ]; then
+        print_banner
+        print_main_progress 5
+        echo "${GREEN}✔ [5/${TOTAL_STEPS}] Directory rl-swarm already exists, skipping clone.${NC}"
+        sleep 1
+    else
+        run_with_loader "[5/${TOTAL_STEPS}] Cloning Gensyn AI repository" 5 \
+            "git clone --quiet https://github.com/gensyn-ai/rl-swarm.git"
+    fi
+
+    # --- Step 6: Python Environment & Frontend Setup ---
+    print_banner
+    print_main_progress 6
+    echo "[6/${TOTAL_STEPS}] Setting up Python environment and frontend..."
+    
+    # Use a subshell to contain directory changes (safer than cd/cd)
+    (
+        cd rl-swarm || { echo "Error: Directory 'rl-swarm' not found!"; exit 1; }
+        
+        echo "➡️  Creating Python virtual environment..."
+        python3 -m venv .venv >> "${LOG_FILE}" 2>&1 || handle_error "Python venv creation" 6
+        echo "✅ Python environment created."
+        
+        (
+            cd modal-login || { echo "Error: Directory 'modal-login' not found!"; exit 1; }
+
+            echo "➡️  ${BOLD}Running 'yarn install'... This may take several minutes. See live output below.${NC}"
+            yarn install || handle_error "Yarn install" 6
+
+            echo "➡️  ${BOLD}Running 'yarn upgrade'...${NC}"
+            yarn upgrade || handle_error "Yarn upgrade" 6
+            
+            echo "➡️  ${BOLD}Running 'yarn add next@latest viem@latest'...${NC}"
+            yarn add next@latest viem@latest || handle_error "Yarn add next/viem" 6
+        )
+    )
+    # Check the subshell's exit code
+    [ $? -eq 0 ] || handle_error "Frontend setup" 6 "[6/6] Setting up environment..."
+
+    echo "${GREEN}✔ Frontend setup complete.${NC}"
+    sleep 2
+    
+    # --- Final Output ---
+    print_banner
+    print_main_progress ${TOTAL_STEPS}
+    echo
+    echo "${GREEN}${BOLD}✅ GENSYN SETUP COMPLETE${NC}"
+    echo "All files are located in: ${BOLD}$(pwd)/rl-swarm${NC}"
+    echo "To get started, navigate to the directory and activate the environment."
+    echo
+    echo "${BOLD}Happy computing!${NC}"
+}
+
+# Run the main function
+main
