@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# GENSYN AUTO SETUP SCRIPT - FINAL ROBUST VERSION
-# This version handles the sudo password prompt correctly from the start.
+# GENSYN AUTO SETUP SCRIPT - FIXED VERSION
+# This version fixes the freezing issue at Node.js/Yarn setup step
 #
 set -e # Exit immediately if a command exits with a non-zero status.
 
@@ -23,6 +23,7 @@ YELLOW=$(tput setaf 3 2>/dev/null) || YELLOW=""
 # === UI Functions ===
 print_banner() {
     clear
+    local colors=(1 2 3 4 5 6)
     local color
     color=$(tput setaf ${colors[$RANDOM % ${#colors[@]}]})
     echo "$color"
@@ -33,7 +34,7 @@ print_banner() {
     echo "██████╔╝███████╗ ╚████╔╝ ██║███████╗"
     echo "╚═════╝ ╚══════╝  ╚═══╝  ╚═╝╚══════╝"
     echo "${NC}"
-    echo "${BOLD}🔥 GENSYN AUTO SETUP SCRIPT (ROBUST VERSION) 🔥${NC}"
+    echo "${BOLD}🔥 GENSYN AUTO SETUP SCRIPT (FIXED VERSION) 🔥${NC}"
     echo
 }
 
@@ -75,8 +76,8 @@ run_with_loader() {
     local step="$2"
     local command_to_run="$3"
     
-    # Run command in the background, redirecting stdout/stderr to the log file
-    eval "${command_to_run}" >> "${LOG_FILE}" 2>&1 &
+    # Add timeout to prevent hanging
+    timeout 600 bash -c "eval \"${command_to_run}\"" >> "${LOG_FILE}" 2>&1 &
     local pid=$!
     local spinner=("🌍" "🌎" "🌏")
     local i=0
@@ -130,21 +131,43 @@ main() {
     echo "सफलतापूर्वक डायरेक्टरी में: $(pwd)"
     sleep 1
 
-    # --- Steps 1-4 (Unchanged) ---
+    # --- Step 1: System Update ---
     run_with_loader "[1/${TOTAL_STEPS}] सिस्टम अपडेट और बेस पैकेज इंस्टॉल करना" 1 \
         "sudo apt-get update -qq && sudo apt-get install -y -qq sudo python3 python3-venv python3-pip curl wget screen git lsof nano unzip iproute2 build-essential gcc g++"
 
+    # --- Step 2: CUDA Setup ---
     run_with_loader "[2/${TOTAL_STEPS}] CUDA सेटअप डाउनलोड और चलाना" 2 \
         "rm -f cuda.sh && curl -s -o cuda.sh https://raw.githubusercontent.com/zunxbt/gensyn-testnet/main/cuda.sh && chmod +x cuda.sh && bash ./cuda.sh"
 
-    run_with_loader "[3/${TOTAL_STEPS}] Node.js और Yarn सेटअप करना" 3 \
-        "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && \
-        sudo apt-get update -qq && sudo apt-get install -y -qq nodejs && \
-        sudo mkdir -p /etc/apt/keyrings && \
-        curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/yarn.gpg && \
-        echo 'deb [signed-by=/etc/apt/keyrings/yarn.gpg] https://dl.yarnpkg.com/debian stable main' | sudo tee /etc/apt/sources.list.d/yarn.list && \
-        sudo apt-get update -qq && sudo apt-get install -y -qq yarn"
+    # --- Step 3: Node.js and Yarn Setup (FIXED) ---
+    print_banner
+    print_main_progress 3
+    echo "[3/${TOTAL_STEPS}] Node.js और Yarn सेटअप करना..."
+    
+    # Check if Node.js is already installed
+    if command -v node &> /dev/null; then
+        echo "${GREEN}✔ Node.js पहले से इंस्टॉल है: $(node -v)${NC}"
+    else
+        echo "➡️  Node.js इंस्टॉल कर रहा है..."
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >> "${LOG_FILE}" 2>&1
+        sudo apt-get update -qq >> "${LOG_FILE}" 2>&1
+        sudo apt-get install -y -qq nodejs >> "${LOG_FILE}" 2>&1
+        echo "${GREEN}✔ Node.js इंस्टॉल हो गया: $(node -v)${NC}"
+    fi
 
+    # Check if Yarn is already installed
+    if command -v yarn &> /dev/null; then
+        echo "${GREEN}✔ Yarn पहले से इंस्टॉल है: $(yarn -v)${NC}"
+    else
+        echo "➡️  Yarn इंस्टॉल कर रहा है..."
+        # Use npm to install yarn globally (more reliable)
+        sudo npm install -g yarn >> "${LOG_FILE}" 2>&1
+        echo "${GREEN}✔ Yarn इंस्टॉल हो गया: $(yarn -v)${NC}"
+    fi
+    
+    sleep 2
+
+    # --- Step 4: Version Check ---
     run_with_loader "[4/${TOTAL_STEPS}] इंस्टॉल किए गए संस्करणों की जाँच करना" 4 \
         "node -v && npm -v && yarn -v && python3 --version"
 
@@ -159,7 +182,7 @@ main() {
             "git clone --quiet https://github.com/gensyn-ai/rl-swarm.git"
     fi
 
-    # === MODIFIED Step 6: Setup Base Environment and run 'yarn install' ONLY ===
+    # --- Step 6: Setup Base Environment ---
     print_banner
     print_main_progress 6
     echo "[6/${TOTAL_STEPS}] बेस एनवायरनमेंट सेटअप और Yarn पैकेज इंस्टॉल करना..."
@@ -171,19 +194,24 @@ main() {
         python3 -m venv .venv >> "${LOG_FILE}" 2>&1 || { echo "${RED}Python venv बनाने में विफल।${NC}"; exit 1; }
         echo "✅ Python एनवायरनमेंट 'rl-swarm/.venv' में बन गया है।"
 
-        (
-            cd modal-login || { echo "${RED}Error: 'modal-login' डायरेक्टरी नहीं मिली!${NC}"; exit 1; }
-            
-            echo "➡️  ${BOLD}'yarn install' चला रहा है... इसमें कुछ मिनट लग सकते हैं। लाइव आउटपुट नीचे देखें।${NC}"
-            yarn install
-        )
+        if [ -d "modal-login" ]; then
+            (
+                cd modal-login || { echo "${RED}Error: 'modal-login' डायरेक्टरी नहीं मिली!${NC}"; exit 1; }
+                
+                echo "➡️  ${BOLD}'yarn install' चला रहा है... इसमें कुछ मिनट लग सकते हैं।${NC}"
+                yarn install --network-timeout 100000
+            )
+        else
+            echo "${YELLOW}Warning: 'modal-login' डायरेक्टरी नहीं मिली, yarn install को छोड़ रहा है।${NC}"
+        fi
     )
+    
     if [ $? -ne 0 ]; then
-        echo "The 'yarn install' process failed. Please check the output above for errors." >> "${LOG_FILE}"
-        handle_error "'yarn install' विफल रहा" 6
+        echo "The setup process failed. Please check the output above for errors." >> "${LOG_FILE}"
+        handle_error "Environment setup विफल रहा" 6
     fi
     
-    echo "${GREEN}✔ Yarn install पूरा हुआ।${NC}"
+    echo "${GREEN}✔ Base environment setup पूरा हुआ।${NC}"
     sleep 2
     
     # --- Final Output ---
@@ -199,6 +227,10 @@ main() {
     echo "2. Python एनवायरनमेंट को सक्रिय (activate) करें:"
     echo "   ${GREEN}source .venv/bin/activate${NC}"
     echo "3. अब आप प्रोजेक्ट स्क्रिप्ट चला सकते हैं (जैसे ./run_rl_swarm.sh)"
+    echo
+    echo "${BOLD}--- डिबगिंग के लिए ---${NC}"
+    echo "अगर कोई समस्या आती है, तो लॉग फ़ाइल देखें:"
+    echo "   ${GREEN}cat ${LOG_FILE}${NC}"
     echo
 }
 
